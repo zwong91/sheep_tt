@@ -33,3 +33,15 @@ npm run dev
 对应的图片
 
 ![image-20230730225426894](/Users/mac/Library/Application Support/typora-user-images/image-20230730225426894.png)
+
+主体样式在 里面有一些基础的东西 可自行修改
+
+![image-20230730225632404](/Users/mac/Library/Application Support/typora-user-images/image-20230730225632404.png)
+
+用来写页面自适应的媒体查询
+
+![image-20230730225733035](/Users/mac/Library/Application Support/typora-user-images/image-20230730225733035.png)
+
+颜色变量
+
+![image-20230730225818845](/Users/mac/Library/Application Support/typora-user-images/image-20230730225818845.png)
