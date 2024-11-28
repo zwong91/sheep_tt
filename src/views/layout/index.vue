@@ -10,10 +10,10 @@ export default {
 </script>
 <template>
   <!-- 顶部通栏组件 -->
-  <AppTopNavVue></AppTopNavVue>
+  <!-- <AppTopNavVue></AppTopNavVue> -->
   <!-- 二级路由出口 -->
   <router-view></router-view>
   <!-- 底部通栏组件 -->
-  <AppFooterVue></AppFooterVue>
+  <!-- <AppFooterVue></AppFooterVue> -->
 </template>
 <style scoped lang="less"></style>

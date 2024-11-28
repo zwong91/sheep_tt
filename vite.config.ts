@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "path";
+import fs from 'fs';
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "/", // 设置打包路径
@@ -54,7 +56,10 @@ export default defineConfig({
     },
   },
   server: {
-    https: false, // 是否开启 https
+    https: {
+      key: fs.readFileSync(path.resolve(__dirname, './cf.key')), // 私钥文件
+      cert: fs.readFileSync(path.resolve(__dirname, './cf.pem')) // 公钥证书文件
+    },
     open: false, // 是否自动在浏览器打开
     cors: true, // 允许跨域  8月更新
     port: 8080, // 端口号
