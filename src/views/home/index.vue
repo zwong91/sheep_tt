@@ -1,14 +1,10 @@
-<script setup lang="ts" name="HomeView">
+<!-- <script setup lang="ts" name="HomeView">
 import * as Tone from 'tone'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import RecordRTC from 'recordrtc'
 import { StereoAudioRecorder } from 'recordrtc'
-import { setTimeout } from 'timers'
-
+import Recorder from 'recorder-core' 
 // 设置初始背景噪音级别和采样计数
-let backgroundNoiseLevel = 0 // 用于存储背景噪音的基准能量
-let noiseSamplingCount = 0
-const noiseThreshold = 0.5 // 背景噪声的阈值因子
 const isSpeaking = ref(false) // 记录是否有语音活动
 
 // 创建音频输入
@@ -29,31 +25,6 @@ async function startMic() {
     const analyser = new Tone.Analyser('waveform', 256) // 创建分析器
     mic.connect(analyser) // 连接麦克风到分析器
 
-    // 采样背景噪音
-    function sampleBackgroundNoise(waveform: number[]) {
-      const energy = waveform.reduce(
-        (sum, value) => sum + Math.abs(value) ** 2,
-        0
-      ) // 计算波形的能量
-      backgroundNoiseLevel =
-        (backgroundNoiseLevel * noiseSamplingCount + energy) /
-        (noiseSamplingCount + 1) // 更新背景噪音的基准能量
-      noiseSamplingCount += 1
-    }
-
-    // 动态调整阈值
-    function adjustThreshold(waveform: number[], baseThreshold: number = 0.5) {
-      const energy = waveform.reduce(
-        (sum, value) => sum + Math.abs(value) ** 2,
-        0
-      ) // 计算当前音频的能量
-      const threshold = Math.max(
-        baseThreshold,
-        backgroundNoiseLevel * noiseThreshold
-      ) // 根据背景噪音调整阈值
-      return energy > threshold // 如果当前音频的能量超过阈值，则认为有语音活动
-    }
-
     // 动画函数
     function animate() {
       requestAnimationFrame(animate) // 循环调用 animate 函数
@@ -63,24 +34,6 @@ async function startMic() {
       // 如果所有值都是0，等待音频输入
       if (waveform.every((value: number) => value === 0)) {
         return
-      }
-
-      // 采样背景噪音并动态调整阈值
-      sampleBackgroundNoise(waveform)
-
-      // 判断是否为语音活动
-      const isSpeechDetected = adjustThreshold(waveform)
-
-      if (isSpeechDetected) {
-        if (!isSpeaking.value) {
-          isSpeaking.value = true
-          console.log('Speech detected')
-        }
-      } else {
-        if (isSpeaking.value) {
-          isSpeaking.value = false
-          console.log('Speech ended')
-        }
       }
 
       // 计算波形数据的平均值，用于控制圆的缩放效果
@@ -119,7 +72,6 @@ async function startMic() {
     console.error('Error opening mic:', error)
   }
 }
-startMic()
 
 let recorder: { startRecording: () => void; stopRecording: () => void }
 let socket: WebSocket
@@ -129,6 +81,8 @@ const text = ref('正在拨号')
 const Qtext = ref([['', '']])
 const Atext = ref('')
 const audioData = ref<string[]>([])
+
+
 
 const startTranscription = async () => {
   try {
@@ -175,6 +129,7 @@ const startTranscription = async () => {
     socket.onopen = () => {
       text.value = '已拨通'
       isRecording = true
+      startMic()
       recorder.startRecording()
     }
 
@@ -187,6 +142,7 @@ const startTranscription = async () => {
 
     // WebSocket 连接关闭
     socket.onclose = () => {
+      startTranscription()
       text.value = '已挂断'
     }
 
@@ -227,23 +183,184 @@ const endedFn = (e: any) => {
   isRecording = true
 }
 
-// startTranscription()
+startTranscription()
+
+nextTick(() => {
+  console.log('1:', 1)
+  document.body.click()
+})
+</script> -->
+<script setup lang="ts" name="HomeView">
+//必须引入的核心
+import Recorder from 'recorder-core'
+
+//引入mp3格式支持文件；如果需要多个格式支持，把这些格式的编码引擎js文件放到后面统统引入进来即可
+import 'recorder-core/src/engine/mp3'
+import 'recorder-core/src/engine/mp3-engine'
+//录制wav格式的用这一句就行
+import 'recorder-core/src/engine/wav'
+
+//可选的插件支持项，这个是波形可视化插件
+import 'recorder-core/src/extensions/waveview'
+import { ref } from 'vue'
+//ts import 提示：npm包内已自带了.d.ts声明文件（不过是any类型）
+
+let rec: any
+let recBlob: any
+let wave: any
+const recwave = ref(null)
+
+// 打开录音
+function recOpen() {
+  //创建录音对象
+  rec = Recorder({
+    type: 'wav', //录音格式，可以换成wav等其他格式
+    sampleRate: 6000, //录音的采样率，越大细节越丰富越细腻
+    bitRate: 16, //录音的比特率，越大音质越好
+    onProcess: (
+      buffers: any,
+      powerLevel: any,
+      bufferDuration: any,
+      bufferSampleRate: any,
+      newBufferIdx: any,
+      asyncEnd: any
+    ) => {
+      //录音实时回调，大约1秒调用12次本回调
+      //可实时绘制波形，实时上传（发送）数据
+      if (wave) {
+        console.log('powerLevel:', powerLevel)
+        // buffers
+        wave.input(buffers[buffers.length - 1], powerLevel, bufferSampleRate)
+      }
+    }
+  })
+  if (!rec) {
+    alert('当前浏览器不支持录音功能！')
+    return
+  }
+  //打开录音，获得权限
+  rec.open(
+    () => {
+      console.log('录音已打开')
+      if (recwave.value) {
+        //创建音频可视化图形绘制对象
+        wave = Recorder.WaveView({ elem: recwave.value })
+      }
+    },
+    (msg: any, isUserNotAllow: any) => {
+      //用户拒绝了录音权限，或者浏览器不支持录音
+      console.log((isUserNotAllow ? 'UserNotAllow，' : '') + '无法录音:' + msg)
+    }
+  )
+}
+// 开始录音
+function recStart() {
+  if (!rec) {
+    console.error('未打开录音')
+    return
+  }
+  rec.start()
+  console.log('已开始录音')
+}
+// 结束录音
+function recStop() {
+  if (!rec) {
+    console.error('未打开录音')
+    return
+  }
+  rec.stop(
+    (blob: any, duration: any) => {
+      //blob就是我们要的录音文件对象，可以上传，或者本地播放
+      recBlob = blob
+      //简单利用URL生成本地文件地址，此地址只能本地使用，比如赋值给audio.src进行播放，赋值给a.href然后a.click()进行下载（a需提供download="xxx.mp3"属性）
+      const localUrl = (window.URL || window.webkitURL).createObjectURL(blob)
+      console.log('录音成功', blob, localUrl, '时长:' + duration + 'ms')
+      upload(blob) //把blob文件上传到服务器
+      rec.close() //关闭录音，释放录音资源，当然可以不释放，后面可以连续调用start
+      rec = null
+    },
+    (err: any) => {
+      console.error('结束录音出错：' + err)
+      rec.close() //关闭录音，释放录音资源，当然可以不释放，后面可以连续调用start
+      rec = null
+    }
+  )
+}
+// 上传录音
+function upload(blob: any) {
+  //使用FormData用multipart/form-data表单上传文件
+  //或者将blob文件用FileReader转成base64纯文本编码，使用普通application/x-www-form-urlencoded表单上传
+  // const form = new FormData();
+  // form.append('upfile', blob, 'recorder.mp3'); // 和普通form表单并无二致，后端接收到upfile参数的文件，文件名为recorder.mp3
+  // form.append('key', 'value'); // 其他参数
+  // var xhr = new XMLHttpRequest();
+  // xhr.open('POST', '/upload/xxxx');
+  // xhr.onreadystatechange = () => {
+  //   if (xhr.readyState == 4) {
+  //     if (xhr.status == 200) {
+  //       console.log('上传成功');
+  //     } else {
+  //       console.error('上传失败' + xhr.status);
+  //     }
+  //   }
+  // };
+  // xhr.send(form);
+  // 也可以写自己的上传函数
+  // uploadService(blob, 'zengjiaqi_test.wav');
+}
+// 本地播放录音
+function recPlay() {
+  //本地播放录音试听，可以直接用URL把blob转换成本地播放地址，用audio进行播放
+  const localUrl = URL.createObjectURL(recBlob)
+  const audio = document.createElement('audio')
+  audio.controls = true
+  document.body.appendChild(audio)
+  audio.src = localUrl
+  audio.play() //这样就能播放了
+  //注意不用了时需要revokeObjectURL，否则霸占内存
+  setTimeout(function () {
+    URL.revokeObjectURL(audio.src)
+  }, 5000)
+}
 </script>
 <template>
   <div class="home_view">
-    <div id="status">
-      {{ text }}
-      <!-- <span style="color: red">{{
-        isSpeaking ? '正在讲话' : '没有语音活动'
-      }}</span> -->
+    <div>
+      <div>
+        <!-- 按钮 -->
+        <button @click="recOpen">打开录音,请求权限</button>
+        | <button @click="recStart">开始录音</button>
+        <button @click="recStop">结束录音</button>
+        | <button @click="recPlay">本地试听</button>
+      </div>
+      <div style="padding-top: 5px">
+        <!-- 波形绘制区域 -->
+        <div
+          style="
+            border: 1px solid #ccc;
+            display: inline-block;
+            vertical-align: bottom;
+          "
+        >
+          <div style="height: 100px; width: 300px" ref="recwave"></div>
+        </div>
+      </div>
     </div>
-    <canvas id="canvas" width="400" height="400"></canvas>
+
+    <!-- <div id="status">
+      {{ text }}
+      <span style="color: red">{{
+        isSpeaking ? '正在讲话' : '没有语音活动'
+      }}</span>
+    </div> -->
+    <!-- <RecordApp></RecordApp> -->
+    <!-- <canvas id="canvas" width="400" height="400"></canvas> -->
     <!-- <div class="centerR" :style="{ '--radius': `${radius}px` }"></div> -->
-    <audio v-if="audioData.length" @ended="endedFn" autoplay>
+    <!-- <audio v-if="audioData.length" @ended="endedFn" controls autoplay>
       <source :src="audioData[audioData.length - 1]" />
       Your browser does not support the audio element.
-    </audio>
-    <button @click="startTranscription">开始</button>
+    </audio> -->
+    <!-- <button @click="startTranscription">开始</button> -->
     <!-- {{ audioChunks.length }} -->
   </div>
 </template>
