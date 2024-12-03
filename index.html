@@ -1,183 +1,29 @@
-<!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <link rel="stylesheet" href="//at.alicdn.com/t/font_2143783_iq6z4ey5vu.css" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tt</title>
-</head>
-
-<body>
-  <script src="https://www.WebRTC-Experiment.com/RecordRTC.js"></script>
-  <script src="https://cdn.bootcdn.net/ajax/libs/vConsole/3.9.0/vconsole.min.js"></script>
-  <div id="app"></div>
-  <script type="module" src="/src/main.ts"></script>
-  <script>
-     // 初始化 vConsole
-  var vConsole = new VConsole();
-  console.log('vConsole 已开启');
-  </script>
-</body>
-
-</html>
-<!-- 
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link
+      rel="stylesheet"
+      href="//at.alicdn.com/t/font_2143783_iq6z4ey5vu.css"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Transcribe Audio With Flask 2.0</title>
+    <title>tt</title>
   </head>
+
   <body>
-    <h1>Transcribe Audio With Flask 2.0</h1>
-    <p id="status">Connection status will go here</p >
-    <p id="transcript"></p >
-
-    <button id="startRecording" onclick="startTranscription()">Start Transcription</button>
-    <button id="stopRecording" onclick="stopTranscription()" disabled>Stop Transcription</button>
-
-    <div id="audioPlayerContainer"></div>
-
     <script src="https://www.WebRTC-Experiment.com/RecordRTC.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vConsole/3.9.0/vconsole.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+
     <script>
-      let recorder;
-      let socket;
-      let audioChunks = [];
-      let isRecording = false; // 用于跟踪录音状态
+      // 初始化 vConsole
+      var vConsole = new VConsole();
+      console.log('vConsole 已开启');
 
-      // 开始转录音频
-      async function startTranscription() {
-        try {
-          // 获取音频流
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true
-          });
-
-          // 创建 WebSocket 连接
-          socket = new WebSocket('wss://108.136.246.72:5555/transcribe');
-
-          // 配置 RecordRTC
-          recorder = RecordRTC(stream, {
-            type: 'audio',
-            recorderType: StereoAudioRecorder,
-            mimeType: 'audio/wav',
-            timeSlice: 500, // 每500ms触发一次数据回调
-            desiredSampRate: 16000, // 设置采样率为16kHz
-            numberOfAudioChannels: 1, // 单声道
-            ondataavailable: async blob => {
-               // 将数据块存储到 audioChunks 数组中
-          if (isRecording) {
-            audioChunks.push(blob);
-          }
-        }
-          });
-
-          // WebSocket 连接成功时启动录音
-          socket.onopen = () => {
-            document.querySelector('#status').textContent = 'WebSocket 已连接';
-            isRecording = true;
-            recorder.startRecording();
-          };
-
-          // WebSocket 错误处理
-          socket.onerror = error => {
-            console.error('WebSocket error:', error);
-            document.querySelector('#status').textContent = 'WebSocket 错误';
-          };
-
-          // WebSocket 连接关闭
-          socket.onclose = () => {
-            document.querySelector('#status').textContent = 'WebSocket 连接已关闭';
-          };
-
-          // 绑定 WebSocket 消息事件
-          socket.onmessage = message => {
-            const received = message.data;
-
-            // 解析接收到的 JSON 数据
-            const jsonData = JSON.parse(received);
-            const history = jsonData['history'];
-            const audio = jsonData['audio'];
-            const text = jsonData['text'];
-
-            // 格式化输出
-            const formattedOutput = `
-              <p><strong>History:</strong> ${JSON.stringify(history)}</p >
-              <p><strong>Audio:</strong> <audio controls>
-                  <source src="https://108.136.246.72:5555/asset/${audio}" type="audio/wav" />
-                  Your browser does not support the audio element.
-                </audio></p >
-              <p><strong>Payload:</strong> ${text}</p >
-              <br><br>
-            `;
-
-            // 将格式化后的数据添加到页面上
-            document.querySelector('#transcript').innerHTML += formattedOutput;
-
-            // 暂停录音
-            if (isRecording) {
-              recorder.stopRecording();
-              isRecording = false;
-              console.log('Recording paused.');
-            }
-
-            // 更新按钮状态
-            document.getElementById('startRecording').disabled = false;
-            document.getElementById('stopRecording').disabled = true;
-          };
-
-          // 更新按钮状态
-          document.getElementById('startRecording').disabled = true;
-          document.getElementById('stopRecording').disabled = false;
-        } catch (error) {
-          console.error('Error accessing media devices:', error);
-          alert('无法访问媒体设备: ' + error.message);
-        }
-      }
-
-       // 停止转录
-  async function stopTranscription() {
-    if (recorder) {
-      recorder.stopRecording();
-      isRecording = false;
-      console.log('Recording stopped.');
-      console.log('audioChunks:', audioChunks)
-      // 合并音频数据并上传
-      const blob = new Blob(audioChunks, { type: 'audio/wav' });
-      const arrayBuffer = await blob.arrayBuffer();
-      const base64data = arrayBufferToBase64(arrayBuffer); // 转换为 Base64 字符串
-
-      const data_to_send = [
-        [
-          [
-            '只是雨滴受什么麻烦的这还没有打雷呢',
-            '下雨总让人心情沉重呢。要不要聊聊？'
-          ]
-        ],
-        'Azure-xiaoxiao',
-        base64data
-      ];
- 
-      // 通过 WebSocket 发送完整的音频数据
-      socket.send(JSON.stringify(data_to_send));
-
-      // 更新按钮状态
-      document.getElementById('startRecording').disabled = false;
-      document.getElementById('stopRecording').disabled = true;
-    }
-  }
-
-      // 将 ArrayBuffer 转换为 Base64 字符串
-      function arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        return window.btoa(binary); // 使用 btoa 转换为 Base64 字符串
-      }
     </script>
   </body>
-</html> -->
+</html>

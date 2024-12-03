@@ -3,7 +3,7 @@ import * as Tone from 'tone'
 import { nextTick, ref } from 'vue'
 import RecordRTC from 'recordrtc'
 import { StereoAudioRecorder } from 'recordrtc'
-import Recorder from 'recorder-core' 
+import Recorder from 'recorder-core'
 // 设置初始背景噪音级别和采样计数
 const isSpeaking = ref(false) // 记录是否有语音活动
 
@@ -82,7 +82,53 @@ const Qtext = ref([['', '']])
 const Atext = ref('')
 const audioData = ref<string[]>([])
 
+// 停止录音时合并并播放所有音频数据
+const stopRecordingAndPlay = async () => {
+  // 停止录制
+  recorder.stopRecording()
 
+  // 合并所有音频片段
+  const combinedBlob = new Blob(audioChunks, { type: 'audio/wav' })
+
+  // 创建一个 URL 来播放合并后的 Blob
+  const audioUrl = URL.createObjectURL(combinedBlob)
+
+  // 创建 Audio 元素并播放音频
+  const audioElement = new Audio(audioUrl)
+  audioElement
+    .play()
+    .then(() => {
+      console.log('Audio is playing')
+    })
+    .catch(error => {
+      console.error('Error playing audio:', error)
+    })
+
+  // 你可以在此处继续处理音频（例如转换为 Base64）
+  const arrayBuffer = await combinedBlob.arrayBuffer()
+  const base64data = arrayBufferToBase64(arrayBuffer) // 转换为 Base64 字符串
+
+  // 构建要发送的数据
+  const data_to_send = [Qtext.value, 'Azure-xiaoxiao', base64data]
+
+  // 检查 WebSocket 状态并发送数据
+  if (socket.readyState === WebSocket.OPEN) {
+    // WebSocket 已连接，发送数据
+    socket.send(JSON.stringify(data_to_send))
+  } else {
+    // 连接还未建立，缓存数据
+    socket.onopen = () => {
+      text.value = 'WebSocket 已连接'
+      socket.send(JSON.stringify(data_to_send)) // 连接成功后发送数据
+    }
+  }
+
+  // 清空音频片段数组，准备下次录制
+  audioChunks.length = 0
+}
+
+// 假设你需要在某个地方停止录音并播放
+// 停止录音并播放音频
 
 const startTranscription = async () => {
   try {
@@ -99,13 +145,15 @@ const startTranscription = async () => {
       type: 'audio',
       recorderType: StereoAudioRecorder,
       mimeType: 'audio/wav',
-      timeSlice: 1500, // 每500ms触发一次数据回调
+      timeSlice: 300, // 每500ms触发一次数据回调
       desiredSampRate: 16000, // 设置采样率为16kHz
       numberOfAudioChannels: 1, // 单声道
       ondataavailable: async (blob: any) => {
+        audioChunks.push(blob)
+        console.log('1:', 1)
         if (isRecording) {
-          // audioChunks.push(blob)
-          // const blob = new Blob(audioChunks, { type: 'audio/wav' })
+          const blob = new Blob(audioChunks, { type: 'audio/wav' })
+          // playRecording()
           const arrayBuffer = await blob.arrayBuffer()
           const base64data = arrayBufferToBase64(arrayBuffer) // 转换为 Base64 字符串
           const data_to_send = [Qtext.value, 'Azure-xiaoxiao', base64data]
@@ -157,7 +205,7 @@ const startTranscription = async () => {
       Atext.value = jsonData['text']
 
       if (audio != undefined) {
-        audioData.value.push(`https://108.136.246.72:5555/asset/${audio}`)
+        // audioData.value.push(`https://108.136.246.72:5555/asset/${audio}`)
         isRecording = false
       }
       // 格式化输出
@@ -182,6 +230,46 @@ const endedFn = (e: any) => {
   audioData.value = []
   isRecording = true
 }
+// 用于依次播放音频数据块
+const playRecording = () => {
+  if (audioChunks.length === 0) {
+    console.error('No audio data to play!')
+    return
+  }
+
+  // 创建一个播放队列，每次从队列中取出一个音频片段
+  let currentIndex = 0
+
+  // 播放音频的函数
+  const playNextAudio = () => {
+    if (currentIndex < audioChunks.length) {
+      const blob = audioChunks[currentIndex] // 获取当前音频片段
+      const audioUrl = URL.createObjectURL(blob) // 创建音频的 URL
+      const audioElement = new Audio(audioUrl)
+
+      // 播放当前音频片段
+      audioElement
+        .play()
+        .then(() => {
+          console.log('Audio is playing')
+        })
+        .catch(error => {
+          console.error('Error playing audio:', error)
+        })
+
+      // 设置音频播放完后的回调，播放下一个音频片段
+      audioElement.onended = () => {
+        currentIndex++ // 更新索引
+        playNextAudio() // 递归播放下一个音频片段
+      }
+    } else {
+      console.log('All audio chunks have been played!')
+    }
+  }
+
+  // 开始播放第一个音频片段
+  playNextAudio()
+}
 
 startTranscription()
 
@@ -193,6 +281,9 @@ nextTick(() => {
 <script setup lang="ts" name="HomeView">
 //必须引入的核心
 import Recorder from 'recorder-core'
+declare var vad: any
+import { StereoAudioRecorder } from 'recordrtc'
+import RecordRTC from 'recordrtc'
 
 //引入mp3格式支持文件；如果需要多个格式支持，把这些格式的编码引擎js文件放到后面统统引入进来即可
 import 'recorder-core/src/engine/mp3'
@@ -210,6 +301,20 @@ let recBlob: any
 let wave: any
 const recwave = ref(null)
 
+let recorder: { startRecording: () => void; stopRecording: () => void }
+let socket: WebSocket
+let audioChunks: any[] = []
+// let isRecording = false // 初始设置为 false，录音开始时才为 true
+const text = ref('正在拨号')
+const Qtext = ref([['', '']])
+const Atext = ref('')
+const audioData = ref<string[]>([])
+const number = ref(0)
+
+const speechShow = ref(false)
+const powerLevelShow = ref(false)
+const powerLevelF = ref(0)
+let timer: string | number | NodeJS.Timeout | undefined
 // 打开录音
 function recOpen() {
   //创建录音对象
@@ -228,8 +333,11 @@ function recOpen() {
       //录音实时回调，大约1秒调用12次本回调
       //可实时绘制波形，实时上传（发送）数据
       if (wave) {
-        console.log('powerLevel:', powerLevel)
-        // buffers
+        powerLevelF.value = powerLevel
+        // console.log('powerLevel:', powerLevel)
+        if (speechShow.value && powerLevel > 35) {
+          powerLevelShow.value = true
+        }
         wave.input(buffers[buffers.length - 1], powerLevel, bufferSampleRate)
       }
     }
@@ -322,17 +430,205 @@ function recPlay() {
     URL.revokeObjectURL(audio.src)
   }, 5000)
 }
+// 启动人声检测
+async function main() {
+  const myvad = await vad.MicVAD.new({
+    onSpeechStart: () => {
+      speechShow.value = true
+      if (timer) {
+        clearTimeout(timer)
+      }
+      console.log('检测到人声')
+    },
+    onSpeechEnd: (audio: any) => {
+      console.log('结束:')
+      speechShow.value = false
+      if (powerLevelShow.value) {
+        timer = setTimeout(() => {
+          console.log('powerLevelShow.value:', powerLevelShow.value)
+          okBlob()
+          powerLevelShow.value = false
+        }, 1000)
+      }
+    }
+  })
+
+  myvad.start()
+}
+recOpen()
+
+const startTranscription = async () => {
+  try {
+    // 获取音频流
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    })
+
+    // 创建 WebSocket 连接
+    socket = new WebSocket('wss://gtp.aleopool.cc/transcribe')
+
+    // 创建 MediaRecorder 实例
+    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+    // 配置 RecordRTC
+    // recorder = RecordRTC(stream, {
+    //   type: 'audio',
+    //   recorderType: StereoAudioRecorder,
+    //   mimeType: 'audio/wav',
+    //   timeSlice: 500, // 每500ms触发一次数据回调
+    //   desiredSampRate: 16000, // 设置采样率为16kHz
+    //   numberOfAudioChannels: 1, // 单声道
+    //   ondataavailable: async (blob: any) => {
+    //     audioChunks.push(blob)
+    //     number.value++
+    //     if (speechShow.value) {
+    //     }
+    //   }
+    // })
+    mediaRecorder.addEventListener('dataavailable', async event => {
+      if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+        const reader: any = new FileReader()
+        reader.onloadend = () => {
+          const base64data = reader!.result?.split(',')[1]
+          console.log('base64data:', base64data)
+          console.log('reader:', reader)
+          const data_to_send = [
+            [
+              [
+                ' 只是雨滴 受什么麻烦的这还没有打雷呢 ',
+                '下雨总让人心情沉重呢。要不要聊聊？'
+              ]
+            ],
+            'Azure-xiaoxiao',
+            base64data
+          ]
+          const json_data = JSON.stringify(data_to_send)
+          // socket.send(json_data)
+        }
+        reader.readAsDataURL(event.data)
+      }
+    })
+    mediaRecorder.start(500)
+
+    // WebSocket 连接成功时启动录音
+    socket.onopen = () => {
+      text.value = '已拨通'
+      // isRecording = true
+      recorder.startRecording()
+      main()
+      recStart()
+    }
+
+    // WebSocket 错误处理
+    socket.onerror = error => {
+      console.error('WebSocket error:', error)
+      // alert(error)
+      text.value = 'WebSocket 错误'
+    }
+
+    // WebSocket 连接关闭
+    socket.onclose = () => {
+      startTranscription()
+      text.value = '已挂断'
+    }
+
+    // 绑定 WebSocket 消息事件
+    socket.onmessage = message => {
+      const received = message.data
+
+      // 解析接收到的 JSON 数据
+      const jsonData = JSON.parse(received)
+      Qtext.value = jsonData['history']
+      const audio = jsonData['audio']
+      Atext.value = jsonData['text']
+
+      if (audio != undefined) {
+        audioData.value.push(`https://108.136.246.72:5555/asset/${audio}`)
+        // isRecording = false
+      }
+      // 格式化输出
+    }
+  } catch (error: any) {
+    console.error('Error accessing media devices:', error)
+    alert('无法访问媒体设备: ' + error.message)
+  }
+}
+
+// 将 ArrayBuffer 转换为 Base64 字符串
+function arrayBufferToBase64(buffer: any) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return window.btoa(binary) // 使用 btoa 转换为 Base64 字符串
+}
+const endedFn = (e: any) => {
+  // console.log('e:', e)
+  audioData.value = []
+}
+
+const okBlob = async () => {
+  playRecording()
+  console.log('audioChunks:', audioChunks)
+  const blob = new Blob(audioChunks, { type: 'audio/wav' })
+  const arrayBuffer = await blob.arrayBuffer()
+  const base64data = arrayBufferToBase64(arrayBuffer) // 转换为 Base64 字符串
+  const data_to_send = [Qtext.value, 'Azure-xiaoxiao', base64data]
+  // 检查 WebSocket 状态，如果连接还未建立，缓存数据直到连接成功
+  if (socket.readyState === WebSocket.OPEN) {
+    // WebSocket 已连接，发送数据
+    socket.send(JSON.stringify(data_to_send))
+    audioChunks = []
+  } else {
+    // 连接还未建立，缓存数据
+    socket.onopen = () => {
+      text.value = 'WebSocket 已连接'
+      socket.send(JSON.stringify(data_to_send)) // 连接成功后发送数据
+    }
+  }
+  number.value = 0
+}
+
+startTranscription()
+
+// 播放录制的音频
+const playRecording = () => {
+  console.log('audioChunks.length:', audioChunks.length)
+  console.log('number.value:', number.value)
+  if (audioChunks.length === 0) {
+    console.error('No audio data to play!')
+    return
+  }
+
+  // 合并所有音频块成一个 Blob
+  const combinedBlob = new Blob(audioChunks, { type: 'audio/wav' })
+
+  // 创建一个 URL 来播放合并后的 Blob
+  const audioUrl = URL.createObjectURL(combinedBlob)
+
+  // 创建一个 audio 元素并播放音频
+  const audioElement = new Audio(audioUrl)
+  audioElement
+    .play()
+    .then(() => {
+      console.log('Audio is playing')
+    })
+    .catch(error => {
+      console.error('Error playing audio:', error)
+    })
+
+  // 可选：清空音频数据
+}
 </script>
 <template>
   <div class="home_view">
     <div>
-      <div>
-        <!-- 按钮 -->
+      <!-- <div>
         <button @click="recOpen">打开录音,请求权限</button>
         | <button @click="recStart">开始录音</button>
         <button @click="recStop">结束录音</button>
         | <button @click="recPlay">本地试听</button>
-      </div>
+      </div> -->
       <div style="padding-top: 5px">
         <!-- 波形绘制区域 -->
         <div
@@ -346,20 +642,12 @@ function recPlay() {
         </div>
       </div>
     </div>
-
-    <!-- <div id="status">
-      {{ text }}
-      <span style="color: red">{{
-        isSpeaking ? '正在讲话' : '没有语音活动'
-      }}</span>
-    </div> -->
-    <!-- <RecordApp></RecordApp> -->
     <!-- <canvas id="canvas" width="400" height="400"></canvas> -->
     <!-- <div class="centerR" :style="{ '--radius': `${radius}px` }"></div> -->
-    <!-- <audio v-if="audioData.length" @ended="endedFn" controls autoplay>
+    <audio v-if="audioData.length" @ended="endedFn" controls autoplay>
       <source :src="audioData[audioData.length - 1]" />
       Your browser does not support the audio element.
-    </audio> -->
+    </audio>
     <!-- <button @click="startTranscription">开始</button> -->
     <!-- {{ audioChunks.length }} -->
   </div>

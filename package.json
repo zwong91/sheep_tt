@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",
+    "@ricky0123/vad-web": "^0.0.21",
+    "@speechly/browser-client": "^2.6.6",
     "axios": "^1.4.0",
     "dayjs": "^1.11.9",
+    "deepspeech": "^0.9.3",
     "echarts": "^5.4.3",
     "element-plus": "^2.3.8",
     "i": "^0.3.7",
