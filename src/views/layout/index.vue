@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 导入组件
-import AppTopNavVue from './components/app-topnav.vue'
-import AppFooterVue from './components/app-footer.vue'
+// import AppTopNavVue from './components/app-topnav.vue'
+// import AppFooterVue from './components/app-footer.vue'
 </script>
 <script lang="ts">
 export default {
