@@ -449,7 +449,7 @@ async function main() {
           okBlob()
           powerLevelShow.value = false
         }, 1000)
-      }
+      } else audioChunks = []
     }
   })
 
@@ -468,46 +468,25 @@ const startTranscription = async () => {
     socket = new WebSocket('wss://gtp.aleopool.cc/transcribe')
 
     // 创建 MediaRecorder 实例
-    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
     // 配置 RecordRTC
-    // recorder = RecordRTC(stream, {
-    //   type: 'audio',
-    //   recorderType: StereoAudioRecorder,
-    //   mimeType: 'audio/wav',
-    //   timeSlice: 500, // 每500ms触发一次数据回调
-    //   desiredSampRate: 16000, // 设置采样率为16kHz
-    //   numberOfAudioChannels: 1, // 单声道
-    //   ondataavailable: async (blob: any) => {
-    //     audioChunks.push(blob)
-    //     number.value++
-    //     if (speechShow.value) {
-    //     }
-    //   }
-    // })
-    mediaRecorder.addEventListener('dataavailable', async event => {
-      if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-        const reader: any = new FileReader()
-        reader.onloadend = () => {
-          const base64data = reader!.result?.split(',')[1]
-          console.log('base64data:', base64data)
-          console.log('reader:', reader)
-          const data_to_send = [
-            [
-              [
-                ' 只是雨滴 受什么麻烦的这还没有打雷呢 ',
-                '下雨总让人心情沉重呢。要不要聊聊？'
-              ]
-            ],
-            'Azure-xiaoxiao',
-            base64data
-          ]
-          const json_data = JSON.stringify(data_to_send)
-          // socket.send(json_data)
+    recorder = RecordRTC(stream, {
+      type: 'audio',
+      recorderType: StereoAudioRecorder,
+      mimeType: 'audio/wav',
+      timeSlice: 30, // 每500ms触发一次数据回调
+      desiredSampRate: 16000, // 设置采样率为16kHz
+      numberOfAudioChannels: 1, // 单声道
+      ondataavailable: async (blob: any) => {
+        // audioChunks.push(blob)
+
+        const base64 = await blobToBase64(blob)
+        // console.log('base64:', base64)
+        audioChunks.push(base64)
+        // number.value++
+        if (speechShow.value) {
         }
-        reader.readAsDataURL(event.data)
       }
     })
-    mediaRecorder.start(500)
 
     // WebSocket 连接成功时启动录音
     socket.onopen = () => {
@@ -553,32 +532,61 @@ const startTranscription = async () => {
   }
 }
 
-// 将 ArrayBuffer 转换为 Base64 字符串
-function arrayBufferToBase64(buffer: any) {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return window.btoa(binary) // 使用 btoa 转换为 Base64 字符串
+// 将 Blob 转换为 Base64
+function blobToBase64(blob: Blob) {
+  return new Promise((resolve, reject) => {
+    const reader: any = new FileReader()
+    reader.onloadend = () => resolve(reader!.result?.split(',')[1]) // 提取 Base64 数据部分
+    reader.onerror = (error: any) => reject(error)
+    reader.readAsDataURL(blob)
+  })
 }
+// 将 ArrayBuffer 转换为 Base64 字符串
+// function arrayBufferToBase64(buffer: any) {
+//   const bytes = new Uint8Array(buffer)
+//   let binary = ''
+//   for (let i = 0; i < bytes.byteLength; i++) {
+//     binary += String.fromCharCode(bytes[i])
+//   }
+//   return window.btoa(binary) // 使用 btoa 转换为 Base64 字符串
+// }
 const endedFn = (e: any) => {
   // console.log('e:', e)
   audioData.value = []
 }
+function base64ToBlob(base64: string, mimeType = '') {
+  // 将 Base64 字符串解码为二进制字符串
+  const byteCharacters = atob(base64)
+
+  // 将二进制字符串转化为 Uint8Array
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+
+  // 将 Uint8Array 转换为 Blob
+  return new Blob([byteArray], { type: mimeType })
+}
 
 const okBlob = async () => {
-  playRecording()
-  console.log('audioChunks:', audioChunks)
-  const blob = new Blob(audioChunks, { type: 'audio/wav' })
-  const arrayBuffer = await blob.arrayBuffer()
-  const base64data = arrayBufferToBase64(arrayBuffer) // 转换为 Base64 字符串
+  // console.log('audioChunks:', audioChunks)
+  // playRecording()
+  // console.log('audioChunks:', audioChunks)
+  // const blob = new Blob(audioChunks, { type: 'audio/wav' })
+  // const arrayBuffer = await blob.arrayBuffer()
+  // const base64data = arrayBufferToBase64(arrayBuffer) // 转换为 Base64 字符串
+  const base64data = mergeBase64Audio(audioChunks)
+  // 将合并后的 Base64 数据转换为 Blob
+  // const mergedBlob = base64ToBlob(base64data, 'audio/wav')
+
+  audioChunks = []
+
   const data_to_send = [Qtext.value, 'Azure-xiaoxiao', base64data]
   // 检查 WebSocket 状态，如果连接还未建立，缓存数据直到连接成功
   if (socket.readyState === WebSocket.OPEN) {
     // WebSocket 已连接，发送数据
     socket.send(JSON.stringify(data_to_send))
-    audioChunks = []
   } else {
     // 连接还未建立，缓存数据
     socket.onopen = () => {
@@ -592,32 +600,79 @@ const okBlob = async () => {
 startTranscription()
 
 // 播放录制的音频
-const playRecording = () => {
-  console.log('audioChunks.length:', audioChunks.length)
-  console.log('number.value:', number.value)
-  if (audioChunks.length === 0) {
-    console.error('No audio data to play!')
-    return
+// const playRecording = () => {
+//   // console.log('audioChunks.length:', audioChunks.length)
+//   // console.log('number.value:', number.value)
+//   if (audioChunks.length === 0) {
+//     // console.error('No audio data to play!')
+//     return
+//   }
+
+//   // 合并所有音频块成一个 Blob
+//   const combinedBlob = new Blob(audioChunks, { type: 'audio/wav' })
+
+//   // 创建一个 URL 来播放合并后的 Blob
+//   const audioUrl = URL.createObjectURL(combinedBlob)
+
+//   // 创建一个 audio 元素并播放音频
+//   const audioElement = new Audio(audioUrl)
+//   audioElement
+//     .play()
+//     .then(() => {
+//       console.log('Audio is playing')
+//     })
+//     .catch(error => {
+//       console.error('Error playing audio:', error)
+//     })
+
+//   // 可选：清空音频数据
+// }
+// 函数：将 Base64 字符串转换为二进制数据
+function base64ToArrayBuffer(base64: string) {
+  const binaryString = atob(base64) // 解码 Base64 字符串
+  const len = binaryString.length
+  const bytes = new Uint8Array(len)
+
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
   }
 
-  // 合并所有音频块成一个 Blob
-  const combinedBlob = new Blob(audioChunks, { type: 'audio/wav' })
+  return bytes.buffer
+}
 
-  // 创建一个 URL 来播放合并后的 Blob
-  const audioUrl = URL.createObjectURL(combinedBlob)
+// 函数：将二进制数据转换为 Base64 字符串
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const len = bytes.length
 
-  // 创建一个 audio 元素并播放音频
-  const audioElement = new Audio(audioUrl)
-  audioElement
-    .play()
-    .then(() => {
-      console.log('Audio is playing')
-    })
-    .catch(error => {
-      console.error('Error playing audio:', error)
-    })
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
 
-  // 可选：清空音频数据
+  return btoa(binary) // 将二进制数据转换回 Base64
+}
+
+// 合并多个 Base64 数据
+function mergeBase64Audio(base64Array: string[]) {
+  // 将每个 Base64 数据解码为二进制数据
+  let mergedArray = new Uint8Array(0)
+
+  base64Array.forEach(base64 => {
+    const arrayBuffer = base64ToArrayBuffer(base64)
+    const newUint8Array = new Uint8Array(
+      mergedArray.byteLength + arrayBuffer.byteLength
+    )
+
+    // 将之前的数组和新的数组拼接起来
+    newUint8Array.set(new Uint8Array(mergedArray), 0)
+    newUint8Array.set(new Uint8Array(arrayBuffer), mergedArray.byteLength)
+
+    mergedArray = newUint8Array
+  })
+
+  // 将合并后的二进制数据转换为 Base64 字符串
+  return arrayBufferToBase64(mergedArray.buffer)
 }
 </script>
 <template>
@@ -631,20 +686,13 @@ const playRecording = () => {
       </div> -->
       <div style="padding-top: 5px">
         <!-- 波形绘制区域 -->
-        <div
-          style="
-            border: 1px solid #ccc;
-            display: inline-block;
-            vertical-align: bottom;
-          "
-        >
-          <div style="height: 100px; width: 300px" ref="recwave"></div>
-        </div>
+
+        <div style="height: 100px; width: 300px" ref="recwave"></div>
       </div>
     </div>
     <!-- <canvas id="canvas" width="400" height="400"></canvas> -->
     <!-- <div class="centerR" :style="{ '--radius': `${radius}px` }"></div> -->
-    <audio v-if="audioData.length" @ended="endedFn" controls autoplay>
+    <audio v-if="audioData.length" @ended="endedFn" autoplay>
       <source :src="audioData[audioData.length - 1]" />
       Your browser does not support the audio element.
     </audio>
