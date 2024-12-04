@@ -39,7 +39,7 @@ const speechShow = ref(true)
 const powerLevelShow = ref(false)
 let timer: string | number | NodeJS.Timeout | undefined
 const width = document.body.clientWidth / 8
-const powerLevelF = ref(width * 2.8)
+const powerLevelF = ref(width * 2.5)
 // 打开录音
 function recOpen() {
   //创建录音对象
@@ -187,6 +187,7 @@ function recPlay() {
 recOpen()
 
 const startTranscription = async () => {
+  showroot1.value = false
   try {
     // 获取音频流
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -202,7 +203,7 @@ const startTranscription = async () => {
       type: 'audio',
       recorderType: StereoAudioRecorder,
       mimeType: 'audio/wav',
-      timeSlice: 500, // 每500ms触发一次数据回调
+      timeSlice: 1000, // 每500ms触发一次数据回调
       desiredSampRate: 16000, // 设置采样率为16kHz
       numberOfAudioChannels: 1, // 单声道
       ondataavailable: async (blob: any) => {
@@ -256,6 +257,7 @@ const startTranscription = async () => {
     // WebSocket 连接关闭
     socket.onclose = () => {
       // startTranscription()
+      showroot1.value = false
       text.value = '已挂断'
     }
 
@@ -421,20 +423,20 @@ function mergeBase64Audio(base64Array: string[]) {
 
 const isWakeLockActive = ref(false)
 let wakeLock: any // 声明 wakeLock 变量
-const preventSleep = async () => {
-  try {
-    // 检查浏览器是否支持 WakeLock API
-    if ('wakeLock' in navigator) {
-      wakeLock = await (navigator as any).wakeLock.request('screen')
-      isWakeLockActive.value = true // 设置为激活状态
-      console.log('Wake Lock acquired')
-    } else {
-      console.warn('Wake Lock API is not supported on this device.')
-    }
-  } catch (err) {
-    console.error('Failed to acquire wake lock:', err)
-  }
-}
+// const preventSleep = async () => {
+//   try {
+//     // 检查浏览器是否支持 WakeLock API
+//     if ('wakeLock' in navigator) {
+//       wakeLock = await (navigator as any).wakeLock.request('screen')
+//       isWakeLockActive.value = true // 设置为激活状态
+//       console.log('Wake Lock acquired')
+//     } else {
+//       console.warn('Wake Lock API is not supported on this device.')
+//     }
+//   } catch (err) {
+//     console.error('Failed to acquire wake lock:', err)
+//   }
+// }
 
 const releaseSleepLock = async () => {
   if (wakeLock) {
@@ -446,6 +448,9 @@ const releaseSleepLock = async () => {
 }
 
 function playAudioFromBase64(base64Data: string): void {
+  if ((showroot1.value = false)) {
+    return
+  }
   // 1. 将 Base64 字符串解码为二进制数据
   const binaryData = atob(base64Data)
 
@@ -463,14 +468,41 @@ function playAudioFromBase64(base64Data: string): void {
 
   // 5. 使用 HTML5 Audio API 播放音频
   const audio = new Audio(audioUrl)
+
+  audio.addEventListener('canplaythrough', () => {
+    console.log('音频可以开始播放')
+  })
+
+  // 添加播放结束的监听器
+  audio.addEventListener('ended', () => {
+    console.log('音频播放结束')
+    setTimeout(() => {
+      showroot1.value = true // 假设这是你希望在播放结束后更新的状态
+    }, 1000)
+  })
   audio
     .play()
     .then(() => {
+      showroot1.value = false
       console.log('音频播放开始')
     })
     .catch(error => {
+      setTimeout(() => {
+        showroot1.value = true // 假设这是你希望在播放结束后更新的状态
+      }, 1000)
       console.error('播放音频时发生错误:', error)
     })
+}
+
+let inactivityTimeout: string | number | NodeJS.Timeout | undefined
+
+function preventSleep() {
+  clearTimeout(inactivityTimeout)
+  // 模拟一个触摸事件，保持活跃
+  document.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
+  inactivityTimeout = setTimeout(() => {
+    console.log('Inactivity detected, stopping the simulation.')
+  }, 10000) // 设置一个超时时间（例如10秒无活动后停止）
 }
 
 onMounted(() => {
@@ -478,11 +510,11 @@ onMounted(() => {
     document.body.hidden = true // 触发浏览器的隐藏检查
     document.body.hidden = false
   }, 10000) // 每10秒触发一次
-
-  // preventSleep()
+  // document.addEventListener('touchstart', preventSleep)
+  preventSleep() // 启动定时器
 })
 onUnmounted(() => {
-  // releaseSleepLock()
+  releaseSleepLock()
 })
 const cloelrj = () => {
   showroot.value = false
@@ -525,7 +557,13 @@ const startsdfdsf = () => {
           background: showroot ? 'white' : ''
         }"
       ></div>
-      {{ showroot ? '已连接' : `未连接,如想连接请点击重试` }}
+      {{
+        !showroot1
+          ? 'Loading...'
+          : showroot
+          ? '已连接'
+          : `未连接,如想连接请点击重试`
+      }}
     </div>
     <audio id="audiolkjsdlfkjdklf" @ended="endedFn" autoplay>
       <source />
