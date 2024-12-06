@@ -195,7 +195,7 @@ const startTranscription = async () => {
     })
 
     // 创建 WebSocket 连接
-    socket = new WebSocket('wss://gtp.aleopool.cc/stream')
+    socket = new WebSocket('wss://gtp.aleopool.cc/stream-vc')
 
     // 创建 MediaRecorder 实例
     // 配置 RecordRTC
